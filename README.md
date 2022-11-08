@@ -1,92 +1,48 @@
 # XMLQuery
 
+Toto je dokumentace popisující návrh a implementaci programu XML Query v jazyku python do předmětu „Principy programovacích jazyků a OOP“, který dle zadaného dotazu provádí vyhledání požadovaného elementu v XML souboru.
+Parametry programu a jejich význam je dostupný přímo v programu zadáním parametru --help, nebo spuštěním programu bez parametrů.
+Obecné informace o implementaci
+Program se skládá z několika logických celků, jimiž jsou lexikální analyzátor, syntaktický analyzátor, třída obsahující handlery, které jsou použity pro vyhledávání v XML souboru a samotný program, který těchto celků využívá.
 
+## Lexikální analyzátor
 
-## Getting started
+Lexikální analyzátor je implementací konečného automatu, který je vprogramu zastoupen funkcemi get_token() a is_keyword(). Funkce get_token() čte zadaný dotaz ( funkce je bez parametrů – čte dotaz z globální úrovně ) po znacích a rozhoduje tak o typu tokenu, kterými jsou ALPHA - token, který obsahuje identifikátor, nebo klíčové slovo, token NUMBER pro celé číslo a token reprezentující další znaky dotazovacího jazyka ( ( ) < > = . “ ). O tom, zda je token ALPHA klíčovým slovem, čí nikoliv rozhoduje funkce is_keyword(), která porovnává identifikátor se známými klíčovými slovy a vrací výsledek tohoto porovnání. Porovnávání lze vypnout pomocí změny hodnoty keyword_checking v souboru xqr.py.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Syntaktický analyzátor
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+Je implementován na základě bezkontextové gramatiky uvedené vzadání projektu funkcemi
+parse_query(), parse_condition(), parse_limit(), parse_from(), parse_order() a pro svou práci využívá lexikálního analyzátoru. Tyto funkce kontrolují správnost dotazu a převádí ho do vnitřní reprezentace, která je použita pro vyhledávání v XML souboru.
 
-## Add your files
+## Vyhledávání v XML souboru
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+Elementy jsou vyhledávány na základě zadaného dotazu pomocí externího modulu xml.sax, pro který jsou nadefinovány handlery, které obsluhují signalizaci o počátku souboru, počátku elementu, datech elementu, konci elementu a konci souboru. Těmito handlery jsou:
 
 ```
-cd existing_repo
-git remote add origin https://git.knapovsky.com/knapovsky/xmlquery.git
-git branch -M main
-git push -uf origin main
+startDocument( self )
 ```
 
-## Integrate with your tools
+Na základě parametrů programu nastavuje hlavičku výsledku vyhledávání. Pokud není zadaný parametr -n, pak vkládá řetězec <?xml version="1.0" encoding="utf-8"?>, a pokud byl zadán parametr --root=%s, pak přidává počateční element, který obaluje výsledek vyhledávání.
+startElement( self, data, attrs )
+Při nalezení počátku jakéhokoliv elementu inkrementuje proměnnou self.\_depth, která uchovává hloubku zanoření elementu a testuje, zda současný element vyhovuje klauzuli FROM dotazu. Při shodě nastaví informaci o tom, že se nacházíme uvnitř prohledávaného elementu a uloží jeho název a zanoření.
+Pokud se již uvnitř prohledávaného elementu nacházíme, pak hledáme element vyhovující klauzuli SELECT dotazu. Jakmile jej nalezneme, uložíme jeho hloubku, nastavíme informaci o tom, že byl element vybrán, a pokud navíc dotaz obsahuje podmínku klauzule WHERE, pak nastavíme informaci o tom, že se nacházíme uvnitř podmínky.
+Pokud byl prvek vybrán, pak jej přidáváme do dočasného výsledku vyhledávání, a pokud se navíc nacházím uvnitř podmínky, pak testuji, zda testovaný element klauzule WHERE neodpovídá současnému elementu a
+pokud ano, pak provádím vyhodnocení podmínky pomocí funkce \_check_condition( self, name, attrs )a na základě jejího výsledku nastavuji informaci o tom, že podmínka byla splněna.
+characters( self , data )
+Tento handler se volá, pokud jsou v dokumentu nalezena data elementu. Je-li nastavena informace o tom, že byl prvek vybrán, pak data přidáme do dočasného výsledku dotazu a pokud mají být na základě podmínky klauzule WHERE testována data elementu, vněmž se nacházíme, pak tato data testujeme pomocí funkce \_check_condition( self, name, attrs )a nastavujeme informaci o tom, zda byla podmínka splněna čí nikoliv.
 
-- [ ] [Set up project integrations](https://git.knapovsky.com/knapovsky/xmlquery/-/settings/integrations)
+```
+endElement( self, name )
+```
 
-## Collaborate with your team
+Je volán při nalezení ukončujícího elementu, snižuje se hloubka zanoření.
+Je-li název elementu shodný s názvem elementu v klauzuli FROM, nacházíme se současně uvnitř zdrojového elementu a tento ukončující element je ve stejné hloubce jako jeho počáteční element, pak jsme vystoupili z prohledávaného elementu a tuto informaci uchováváme.
+Pokud jsme uvnitř prohledávaného elementu a prvek byl vybrán pomocí klauzule SELECT, pak do řetězce s dočasným výběrem přidáváme ukončující element prvku.
+Pokud jsem uvnitř prohledávaného elementu a současný ukončující element je element ukončující výběr, pak pokud nebyla zadána podmínka, přidávám dočasný výběr do výběru výsledného, avšak je-li podmínka zadána, pak otestuji, zda v průběhu výběru byla splněna a teprve potom na základě tohoto výsledku přidám dočasný výběr do výběru výsledného.
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+```
+endDocument( self )
+```
 
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Při zadání klauzule LIMIT ořízne výsledek vyhledávání a při zadání parametru --root=%s ukončí výsledek výběru zadaným elementem.
+Testování podmínek je prováděno pomocí funkce \_check_condition( self, name, attrs ), která nejprve zjistí, zda porovnává data elementu, nebo jeho atribut a následně zjišťuje podle typu literálu zadaného v podmínce, zda se jedná o porovnání číselné, nebo porovnání řetězců a převádí data elementu, či hodnotu atributu na odpovídající typy. Samotné porovnání je pak prováděno pomocí operátorů in, >, < a == jazyka python.
